@@ -1,23 +1,24 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
-	"path/filepath"
-	"time"
-	"archive/tar"
 	"io"
-	"bytes"
 	"log"
 	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/radovskyb/watcher"
-	"k8s.io/helm/pkg/helm"
 	"k8s.io/helm/pkg/chartutil"
+	"k8s.io/helm/pkg/helm"
 )
 
-func createDeployment(chart_path string){
+func createDeployment(chart_path string) {
 	hc := helm.NewClient()
 	fmt.Println(hc.ListReleases())
 	fmt.Println("Loading chart...")
@@ -36,7 +37,7 @@ func createDeployment(chart_path string){
 	}
 }
 
-func buildSampleImage(context_path string){
+func buildSampleImage(context_path string) {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		panic(err)
@@ -60,7 +61,7 @@ func buildSampleImage(context_path string){
 	dockerFile := "Dockerfile"
 	root_directory := context_path
 
-	walkDirFn := func (path string, info os.FileInfo, err error) error {
+	walkDirFn := func(path string, info os.FileInfo, err error) error {
 
 		if info.IsDir() {
 			return nil
@@ -75,13 +76,13 @@ func buildSampleImage(context_path string){
 		//read all files, add em' to the tar
 		aFile, err := os.Open(path)
 		if err != nil {
-			log.Fatal(err, " :unable to open " + path )
+			log.Fatal(err, " :unable to open "+path)
 		}
 		defer aFile.Close()
 
 		h, err := tar.FileInfoHeader(info, new_path)
 		if err != nil {
-			fmt.Println("Could create tar header ")
+			fmt.Println("Couldnt create tar header ")
 		} else {
 			h.Name = new_path
 			err = tw.WriteHeader(h)
@@ -107,19 +108,19 @@ func buildSampleImage(context_path string){
 		ctx,
 		dockerFileTarReader,
 		types.ImageBuildOptions{
-			Tags: []string{"albi/yolo"},
+			Tags:       []string{"albi/yolo"},
 			Context:    dockerFileTarReader,
 			Dockerfile: dockerFile,
 			Remove:     true})
 
-		if err != nil {
-			log.Fatal(err, " :unable to build docker image")
-		}
-		defer imageBuildResponse.Body.Close()
-		_, err = io.Copy(os.Stdout, imageBuildResponse.Body)
-		if err != nil {
-			log.Fatal(err, " :unable to read image build response")
-		}
+	if err != nil {
+		log.Fatal(err, " :unable to build docker image")
+	}
+	defer imageBuildResponse.Body.Close()
+	_, err = io.Copy(os.Stdout, imageBuildResponse.Body)
+	if err != nil {
+		log.Fatal(err, " :unable to read image build response")
+	}
 }
 
 func main() {
