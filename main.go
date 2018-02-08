@@ -16,28 +16,40 @@ import (
 	"github.com/radovskyb/watcher"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/helm"
+	"k8s.io/helm/pkg/proto/hapi/chart"
 )
 
-func createDeployment(chart_path string) {
-	hc := helm.NewClient()
-	fmt.Println(hc.ListReleases())
+func createDeployment(chartPath string, imageID string) {
+	// for testing: kubectl -n kube-system port-forward tiller-deploy-7777bff5d-7j5x4 44134
+	hc := helm.NewClient(helm.Host("127.0.0.1:44134"))
 	fmt.Println("Loading chart...")
-	chart, err := chartutil.Load(chart_path)
+	achart, err := chartutil.Load(chartPath)
+
 	if err != nil {
 		log.Fatalln("Could not load chart", err)
 	} else {
-		fmt.Println(chart)
-		fmt.Println("Installing chart")
-		response, err := hc.InstallReleaseFromChart(chart, "default")
+		fmt.Println("installing chart")
+		// chart.Load() reads in the raw values but does not pass them to the chart.
+
+		// thevalues, err := chartutil.ReadValuesFile("testchart/values.yaml")
+		// if err != nil {
+		// 	fmt.Println("Could not read values yaml")
+		// }
+
+		//should this be uninitialized?
+		achart.Values.Values = make(map[string]*chart.Value)
+		achart.Values.Values["imageID"] = &chart.Value{Value: imageID}
+
+		response, err := hc.InstallReleaseFromChart(achart, "default")
 		if err != nil {
-			log.Fatalln("failed to install chart", err)
+			log.Fatalln("Failed to Install chart", err)
 		} else {
 			fmt.Println(response)
 		}
 	}
 }
 
-func buildSampleImage(context_path string) {
+func buildSampleImage(contextPath string) {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		panic(err)
@@ -59,7 +71,7 @@ func buildSampleImage(context_path string) {
 	defer tw.Close()
 
 	dockerFile := "Dockerfile"
-	root_directory := context_path
+	rootDirectory := contextPath
 
 	walkDirFn := func(path string, info os.FileInfo, err error) error {
 
@@ -67,11 +79,11 @@ func buildSampleImage(context_path string) {
 			return nil
 		}
 
-		new_path := path[len(root_directory)+1:]
-		if len(new_path) == 0 {
+		newPath := path[len(rootDirectory)+1:]
+		if len(newPath) == 0 {
 			return nil
 		}
-		fmt.Println(new_path)
+		fmt.Println(newPath)
 
 		//read all files, add em' to the tar
 		aFile, err := os.Open(path)
@@ -80,11 +92,11 @@ func buildSampleImage(context_path string) {
 		}
 		defer aFile.Close()
 
-		h, err := tar.FileInfoHeader(info, new_path)
+		h, err := tar.FileInfoHeader(info, newPath)
 		if err != nil {
 			fmt.Println("Couldnt create tar header ")
 		} else {
-			h.Name = new_path
+			h.Name = newPath
 			err = tw.WriteHeader(h)
 			if err != nil {
 				fmt.Println("Error writing tar header")
@@ -95,7 +107,7 @@ func buildSampleImage(context_path string) {
 		if err != nil {
 			fmt.Println("Error coping file contents to tar")
 		} else {
-			fmt.Printf("Wrote tar contents of %s %d bytes\n", new_path, length)
+			fmt.Printf("Wrote tar contents of %s %d bytes\n", newPath, length)
 		}
 		return nil
 	}
@@ -121,11 +133,20 @@ func buildSampleImage(context_path string) {
 	if err != nil {
 		log.Fatal(err, " :unable to read image build response")
 	}
+
+	//cbf parsing the stream to get the id. Instead do image list
+	// then assume the newest is the one just built
+	listOpts := types.ImageListOptions{All: true}
+	imageList, _ := cli.ImageList(ctx, listOpts)
+	// hope that image build was successful and is the first result
+	imageID := imageList[0].ID
+	createDeployment("testchart", imageID)
+
 }
 
 func main() {
-	createDeployment("testchart")
-	context_path := "samples"
+	//createDeployment("testchart", "")
+	contextPath := "samples"
 	w := watcher.New()
 
 	go func() {
@@ -133,7 +154,7 @@ func main() {
 			select {
 			case event := <-w.Event:
 				fmt.Println(event) // Print the event's info.
-				buildSampleImage(context_path)
+				buildSampleImage(contextPath)
 			case err := <-w.Error:
 				log.Fatalln(err)
 			case <-w.Closed:
@@ -142,7 +163,7 @@ func main() {
 		}
 	}()
 
-	if err := w.AddRecursive(context_path); err != nil {
+	if err := w.AddRecursive(contextPath); err != nil {
 		log.Fatalln(err)
 	}
 	fmt.Println("Watching files for changes:")
