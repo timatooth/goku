@@ -16,6 +16,12 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: {{.Values.imageID}}
+        image: "{{.Values.image}}"
+        imagePullPolicy: Never
         ports:
         - containerPort: 80
+        env:
+        - name: TEST_ENV
+          value: "{{.Values.tester}}"
+        - name: DEMO_FAREWELL
+          value: "Such a sweet sorrow"

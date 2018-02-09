@@ -1,4 +1,4 @@
-package goku
+package main
 
 import (
 	"archive/tar"
@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -16,11 +17,12 @@ import (
 	"github.com/radovskyb/watcher"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/helm"
-	"k8s.io/helm/pkg/proto/hapi/chart"
 )
 
-func createDeployment(chartPath string, imageID string) {
+func createDeployment(chartPath string, imageTag string) {
 	// for testing: kubectl -n kube-system port-forward tiller-deploy-7777bff5d-7j5x4 44134
+	//TODO find a cool way to autodetect kubectl context, and do this in the background?
+
 	hc := helm.NewClient(helm.Host("127.0.0.1:44134"))
 	fmt.Println("Loading chart...")
 	achart, err := chartutil.Load(chartPath)
@@ -29,18 +31,8 @@ func createDeployment(chartPath string, imageID string) {
 		log.Fatalln("Could not load chart", err)
 	} else {
 		fmt.Println("installing chart")
-		// chart.Load() reads in the raw values but does not pass them to the chart.
-
-		// thevalues, err := chartutil.ReadValuesFile("testchart/values.yaml")
-		// if err != nil {
-		// 	fmt.Println("Could not read values yaml")
-		// }
-
-		//should this be uninitialized?
-		achart.Values.Values = make(map[string]*chart.Value)
-		achart.Values.Values["imageID"] = &chart.Value{Value: imageID}
-
-		response, err := hc.InstallReleaseFromChart(achart, "default")
+		//response, err := hc.InstallReleaseFromChart(achart, "default", helm.ValueOverrides([]byte("image: "+imageTag)))
+		response, err := hc.UpdateReleaseFromChart("orderly-stoat", achart, helm.UpdateValueOverrides([]byte("image: "+imageTag)))
 		if err != nil {
 			log.Fatalln("Failed to Install chart", err)
 		} else {
@@ -55,17 +47,7 @@ func buildSampleImage(contextPath string) {
 		panic(err)
 	}
 
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
-	if err != nil {
-		panic(err)
-	}
-
-	for _, container := range containers {
-		fmt.Printf("OMG CONTAINER: %s %s\n", container.ID[:10], container.Image)
-	}
-
 	//create a go ctx to watch for build progress
-
 	buf := new(bytes.Buffer)
 	tw := tar.NewWriter(buf)
 	defer tw.Close()
@@ -116,11 +98,14 @@ func buildSampleImage(contextPath string) {
 
 	dockerFileTarReader := bytes.NewReader(buf.Bytes())
 	ctx := context.Background()
+	timeString := strconv.Itoa(int(time.Now().Unix()))
+	tagName := "goku:" + timeString
+	fmt.Println("Tag is " + tagName)
 	imageBuildResponse, err := cli.ImageBuild(
 		ctx,
 		dockerFileTarReader,
 		types.ImageBuildOptions{
-			Tags:       []string{"albi/yolo"},
+			Tags:       []string{tagName},
 			Context:    dockerFileTarReader,
 			Dockerfile: dockerFile,
 			Remove:     true})
@@ -133,19 +118,11 @@ func buildSampleImage(contextPath string) {
 	if err != nil {
 		log.Fatal(err, " :unable to read image build response")
 	}
-
-	//cbf parsing the stream to get the id. Instead do image list
-	// then assume the newest is the one just built
-	listOpts := types.ImageListOptions{All: true}
-	imageList, _ := cli.ImageList(ctx, listOpts)
-	// hope that image build was successful and is the first result
-	imageID := imageList[0].ID
-	createDeployment("testchart", imageID)
-
+	createDeployment("testchart", tagName)
 }
 
+// watch for FS changes and build docker image, deploy to k8s using helm.
 func main() {
-	//createDeployment("testchart", "")
 	contextPath := "samples"
 	w := watcher.New()
 
@@ -153,7 +130,7 @@ func main() {
 		for {
 			select {
 			case event := <-w.Event:
-				fmt.Println(event) // Print the event's info.
+				fmt.Println(event)
 				buildSampleImage(contextPath)
 			case err := <-w.Error:
 				log.Fatalln(err)

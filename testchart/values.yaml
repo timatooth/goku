@@ -1,3 +1,2 @@
-# this is a placeholder. goku will build a docker image and use the sha256 here
-imageID: 'hello-world'
 tester: "yes"
+image: "hello-world"
