@@ -1,18 +1,11 @@
-# Images are built first in parallel. The directory is then watched
-# for filesystem changes to rebuild & deploy.
-images:
-  # Name is used for the Docker image tag with :<build timestamp>
-- name: goku/app1
-  # Dockerfile is expected to be here:
-  path: samples/app1
-- name: goku/app2
-  path: samples/app2
-
 charts:
 - name: testchart
   path: testchart
   images:
   - name: goku/app1
-    imageValueName: app1-image
+    # can't contain period (.) in the value names, overrides don't seem to work :(
+    imageValueName: app1image
+    path: app1
   - name: goku/app2
-    imageValueName: app2-image
+    imageValueName: app2image
+    path: app2
