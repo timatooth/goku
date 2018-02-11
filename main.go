@@ -167,7 +167,7 @@ func startWatcher(contextPath string, watchCallback WatchChangeFn) {
 	for path, f := range w.WatchedFiles() {
 		fmt.Printf("%s: %s\n", path, f.Name())
 	}
-
+	//check source files every 100ms
 	if err := w.Start(time.Millisecond * 100); err != nil {
 		log.Fatalln(err)
 	}
