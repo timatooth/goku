@@ -1,4 +1,0 @@
-name: goku-test
-version: 1.0.0
-description: A test chart for using Goku
-engine: gotpl # The name of the template engine (optional, defaults to gotpl)

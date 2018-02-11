@@ -121,9 +121,7 @@ func buildSampleImage(contextPath string) {
 	createDeployment("testchart", tagName)
 }
 
-// watch for FS changes and build docker image, deploy to k8s using helm.
-func main() {
-	contextPath := "samples"
+func startWatcher(contextPath string) {
 	w := watcher.New()
 
 	go func() {
@@ -151,4 +149,9 @@ func main() {
 	if err := w.Start(time.Millisecond * 100); err != nil {
 		log.Fatalln(err)
 	}
+}
+
+// watch for FS changes and build docker image, deploy to k8s using helm.
+func main() {
+
 }

@@ -1,0 +1,4 @@
+app1:
+  image: goku/app1:latest
+app2:
+  image: goku/app2:latest
