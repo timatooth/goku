@@ -21,13 +21,22 @@ import (
 	"k8s.io/helm/pkg/helm"
 )
 
-func createDeployment(chartPath string, values map[string]interface{}) {
+// Check if goku managed release already been deployed
+func ReleaseExists(hc *helm.Client, name string) bool {
+	response, err := hc.ListReleases(helm.ReleaseListFilter(name))
+	if err != nil {
+		panic("Could not list existing helm releases")
+	}
+	return response.Count == 1
+}
+
+// Create or update Helm release with chart & value overrides
+func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 	vals, err := yaml.Marshal(values)
 	if err != nil {
 		panic("could not marshal value overrides")
 	}
 
-	// for testing: kubectl -n kube-system port-forward tiller-deploy-7777bff5d-7j5x4 44134
 	//TODO find a cool way to autodetect kubectl context, and do this in the background?
 
 	hc := helm.NewClient(helm.Host("127.0.0.1:44134"))
@@ -37,9 +46,15 @@ func createDeployment(chartPath string, values map[string]interface{}) {
 	if err != nil {
 		log.Fatalln("Could not load chart", err)
 	} else {
-		fmt.Println("installing chart")
-		_, err := hc.InstallReleaseFromChart(achart, "default", helm.ValueOverrides(vals))
-		//response, err := hc.UpdateReleaseFromChart("orderly-stoat", achart, helm.UpdateValueOverrides([]byte("image: "+imageTag)))
+		releaseName := "goku-" + chartName
+		if !ReleaseExists(hc, releaseName) {
+			fmt.Printf("Installing chart release %s\n", releaseName)
+			_, err = hc.InstallReleaseFromChart(achart, "default", helm.ReleaseName(releaseName), helm.ValueOverrides(vals))
+		} else {
+			fmt.Printf("Updating existing chart release %s\n", releaseName)
+			_, err = hc.UpdateReleaseFromChart(releaseName, achart, helm.UpdateValueOverrides(vals))
+		}
+
 		if err != nil {
 			log.Fatalln("Failed to Install chart", err)
 		} else {
@@ -48,13 +63,13 @@ func createDeployment(chartPath string, values map[string]interface{}) {
 	}
 }
 
+// Build docker image inside local kubernetes node
 func buildImage(contextPath string, imageName string) string {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		panic(err)
 	}
 
-	//create a go ctx to watch for build progress
 	buf := new(bytes.Buffer)
 	tw := tar.NewWriter(buf)
 	defer tw.Close()
@@ -72,9 +87,7 @@ func buildImage(contextPath string, imageName string) string {
 		if len(newPath) == 0 {
 			return nil
 		}
-		fmt.Println(newPath)
 
-		//read all files, add em' to the tar
 		aFile, err := os.Open(path)
 		if err != nil {
 			log.Fatal(err, " :unable to open "+path)
@@ -92,11 +105,9 @@ func buildImage(contextPath string, imageName string) string {
 			}
 		}
 
-		length, err := io.Copy(tw, aFile)
+		_, err = io.Copy(tw, aFile)
 		if err != nil {
 			fmt.Println("Error coping file contents to tar")
-		} else {
-			fmt.Printf("Wrote tar contents of %s %d bytes\n", newPath, length)
 		}
 		return nil
 	}
@@ -107,7 +118,6 @@ func buildImage(contextPath string, imageName string) string {
 	ctx := context.Background()
 	timeString := strconv.Itoa(int(time.Now().Unix()))
 	tagName := imageName + ":" + timeString
-	fmt.Println("Tag is " + tagName)
 	imageBuildResponse, err := cli.ImageBuild(
 		ctx,
 		dockerFileTarReader,
@@ -158,12 +168,8 @@ func startWatcher(contextPath string) {
 	}
 }
 
+// goku.yaml structure
 type GokuConfig struct {
-	// Images []struct {
-	// 	Name      string `yaml:"name"`
-	// 	Path      string `yaml:"path"`
-	//
-	// } `yaml:"images"`
 	Charts []struct {
 		Name   string `yaml:"name"`
 		Path   string `yaml:"path"`
@@ -171,33 +177,36 @@ type GokuConfig struct {
 			ImageValueName string `yaml:"imageValueName"`
 			Name           string `yaml:"name"`
 			Path           string `yaml:"path"`
-			//LatestTag      string
 		} `yaml:"images"`
 	} `yaml:"charts"`
 }
 
-// watch for FS changes and build docker image, deploy to k8s using helm.
-func main() {
+// Configuration read from goku.yaml file
+func ReadConfig() *GokuConfig {
 	configData, err := ioutil.ReadFile("examples/goku.yaml")
 	if err != nil {
 		panic("Could not read goku.yaml")
 	}
 	gokuConfig := GokuConfig{}
 	err = yaml.Unmarshal(configData, &gokuConfig)
+
 	if err != nil {
 		log.Fatalf("yaml error: %v", err)
 	}
 
+	return &gokuConfig
+}
+
+// watch for FS changes and build docker image, deploy to k8s using helm.
+func main() {
+	gokuConfig := ReadConfig()
 	for _, chart := range gokuConfig.Charts {
 		valueOverrides := make(map[string]interface{})
 		for _, imageItem := range chart.Images {
-			fmt.Printf("Building %s image from path %s\n", imageItem.Name, imageItem.Path)
 			imageTag := buildImage("examples/"+imageItem.Path, imageItem.Name)
-			fmt.Printf("Built image tag is %s\n", imageTag)
 			valueOverrides[imageItem.ImageValueName] = imageTag
 		}
 
-		//deploy
-		createDeployment("examples/"+chart.Path, valueOverrides)
+		Deploy(chart.Name, "examples/"+chart.Path, valueOverrides)
 	}
 }
