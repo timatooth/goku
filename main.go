@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -59,7 +60,7 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 		if err != nil {
 			log.Fatalln("Failed to Install chart", err)
 		} else {
-			fmt.Println("Done\n")
+			fmt.Println("Done")
 		}
 	}
 }
@@ -139,6 +140,7 @@ func buildImage(contextPath string, imageName string) string {
 	return tagName
 }
 
+//callback type called on file change event
 type WatchChangeFn func()
 
 func startWatcher(contextPath string, watchCallback WatchChangeFn) {
@@ -173,22 +175,30 @@ func startWatcher(contextPath string, watchCallback WatchChangeFn) {
 
 // goku.yaml structure
 type GokuConfig struct {
+	// Helm charts
 	Charts []struct {
-		Name   string `yaml:"name"`
-		Path   string `yaml:"path"`
+		// Vanity name of the chart
+		Name string `yaml:"name"`
+		// Location of the chart relative to the goku.yaml file BaseDir
+		Path string `yaml:"path"`
+		// Map image, name, helm template value names for overriding
 		Images []struct {
+			// The value name which must exist in the helm chart templates
 			ImageValueName string `yaml:"imageValueName"`
 			Name           string `yaml:"name"`
-			Path           string `yaml:"path"`
+			// Context path containing Dockerfile
+			Path string `yaml:"path"`
 		} `yaml:"images"`
 	} `yaml:"charts"`
+	// The base path relative to goku.yaml where all paths are built from
+	BaseDir string
 }
 
 // Configuration read from goku.yaml file
-func ReadConfig() *GokuConfig {
-	configData, err := ioutil.ReadFile("examples/goku.yaml")
+func ReadConfig(configPath string) *GokuConfig {
+	configData, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		panic("Could not read goku.yaml")
+		panic("Could not read: " + configPath)
 	}
 	gokuConfig := GokuConfig{}
 	err = yaml.Unmarshal(configData, &gokuConfig)
@@ -197,36 +207,50 @@ func ReadConfig() *GokuConfig {
 		log.Fatalf("yaml error: %v", err)
 	}
 
+	//set the BaseDir so every path is relative to the Gokufile
+	gokuConfig.BaseDir = path.Dir(configPath)
+
 	return &gokuConfig
 }
 
-// watch for FS changes and build docker image, deploy to k8s using helm.
-func main() {
+func StartWatching(config *GokuConfig) {
 	var wg sync.WaitGroup
-	gokuConfig := ReadConfig()
 
-	for _, chart := range gokuConfig.Charts {
+	for _, chart := range config.Charts {
 		valueOverrides := make(map[string]interface{})
 		for _, imageItem := range chart.Images {
 
-			//initial bootstrap...
-			imageTag := buildImage("examples/"+imageItem.Path, imageItem.Name)
+			//TODO this is an initial bootstrap on startup... to be removed?
+			imageTag := buildImage(path.Join(config.BaseDir, imageItem.Path), imageItem.Name)
 			valueOverrides[imageItem.ImageValueName] = imageTag
 
 			// Go thread to watch each image's file structure
 			// build and update chart on any file change.
-			go func(path string, name string, imageValueName string) {
-				startWatcher("examples/"+path, func() {
-					imageTag := buildImage("examples/"+path, name)
+			go func(contextPath string, name string, imageValueName string) {
+				startWatcher(path.Join(config.BaseDir, contextPath), func() {
+					imageTag := buildImage(path.Join(config.BaseDir, contextPath), name)
 					valueOverrides[imageValueName] = imageTag
-					Deploy(chart.Name, "examples/"+chart.Path, valueOverrides)
+					Deploy(chart.Name, path.Join(config.BaseDir, chart.Path), valueOverrides)
 				})
 			}(imageItem.Path, imageItem.Name, imageItem.ImageValueName)
 
 			wg.Add(1)
 		}
 
-		Deploy(chart.Name, "examples/"+chart.Path, valueOverrides)
-		wg.Wait()
+		Deploy(chart.Name, path.Join(config.BaseDir, chart.Path), valueOverrides)
 	}
+	//block until all threads end
+	wg.Wait()
+}
+
+func main() {
+	var gokuConfig *GokuConfig
+	if len(os.Args) < 2 {
+		// look for goku.yaml in current dir
+		gokuConfig = ReadConfig("goku.yaml")
+	} else {
+		gokuConfig = ReadConfig(os.Args[1])
+	}
+
+	StartWatching(gokuConfig)
 }
