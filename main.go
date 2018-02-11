@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -48,17 +49,17 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 	} else {
 		releaseName := "goku-" + chartName
 		if !ReleaseExists(hc, releaseName) {
-			fmt.Printf("Installing chart release %s\n", releaseName)
+			fmt.Printf("***Installing*** chart release %s... ", releaseName)
 			_, err = hc.InstallReleaseFromChart(achart, "default", helm.ReleaseName(releaseName), helm.ValueOverrides(vals))
 		} else {
-			fmt.Printf("Updating existing chart release %s\n", releaseName)
+			fmt.Printf("**Updating** existing chart release %s... ", releaseName)
 			_, err = hc.UpdateReleaseFromChart(releaseName, achart, helm.UpdateValueOverrides(vals))
 		}
 
 		if err != nil {
 			log.Fatalln("Failed to Install chart", err)
 		} else {
-			fmt.Println("Chart installed")
+			fmt.Println("Done\n")
 		}
 	}
 }
@@ -138,7 +139,9 @@ func buildImage(contextPath string, imageName string) string {
 	return tagName
 }
 
-func startWatcher(contextPath string) {
+type WatchChangeFn func()
+
+func startWatcher(contextPath string, watchCallback WatchChangeFn) {
 	w := watcher.New()
 
 	go func() {
@@ -146,7 +149,7 @@ func startWatcher(contextPath string) {
 			select {
 			case event := <-w.Event:
 				fmt.Println(event)
-				//buildImage(contextPath)
+				watchCallback()
 			case err := <-w.Error:
 				log.Fatalln(err)
 			case <-w.Closed:
@@ -199,14 +202,31 @@ func ReadConfig() *GokuConfig {
 
 // watch for FS changes and build docker image, deploy to k8s using helm.
 func main() {
+	var wg sync.WaitGroup
 	gokuConfig := ReadConfig()
+
 	for _, chart := range gokuConfig.Charts {
 		valueOverrides := make(map[string]interface{})
 		for _, imageItem := range chart.Images {
+
+			//initial bootstrap...
 			imageTag := buildImage("examples/"+imageItem.Path, imageItem.Name)
 			valueOverrides[imageItem.ImageValueName] = imageTag
+
+			// Go thread to watch each image's file structure
+			// build and update chart on any file change.
+			go func(path string, name string, imageValueName string) {
+				startWatcher("examples/"+path, func() {
+					imageTag := buildImage("examples/"+path, name)
+					valueOverrides[imageValueName] = imageTag
+					Deploy(chart.Name, "examples/"+chart.Path, valueOverrides)
+				})
+			}(imageItem.Path, imageItem.Name, imageItem.ImageValueName)
+
+			wg.Add(1)
 		}
 
 		Deploy(chart.Name, "examples/"+chart.Path, valueOverrides)
+		wg.Wait()
 	}
 }
