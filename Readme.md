@@ -33,6 +33,9 @@ charts:
 PODNAME=$(kubectl get pod -n kube-system -l name=tiller -o jsonpath='{.items[0].metadata.name}')
 kubectl -n kube-system port-forward $PODNAME 44134
 
+# Must setup environment to make Docker CLI use minikube VM to build images.
+eval $(minikube docker-env)
+
 # Usage:
 goku [goku.yaml]
 ```

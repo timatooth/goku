@@ -27,7 +27,7 @@ import (
 func ReleaseExists(hc *helm.Client, name string) bool {
 	response, err := hc.ListReleases(helm.ReleaseListFilter(name))
 	if err != nil {
-		panic("Could not list existing helm releases")
+		panic("Could not list existing helm releases. Have you port forwarded the Tiller Pod?")
 	}
 	return response.Count == 1
 }
@@ -36,7 +36,7 @@ func ReleaseExists(hc *helm.Client, name string) bool {
 func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 	vals, err := yaml.Marshal(values)
 	if err != nil {
-		panic("could not marshal value overrides")
+		panic("Could not marshal Chart value overrides")
 	}
 
 	//TODO find a cool way to autodetect kubectl context, and do this in the background?
@@ -46,7 +46,7 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 	achart, err := chartutil.Load(chartPath)
 
 	if err != nil {
-		log.Fatalln("Could not load chart", err)
+		log.Fatalln("Could not load Helm chart", err)
 	} else {
 		releaseName := "goku-" + chartName
 		if !ReleaseExists(hc, releaseName) {
@@ -58,7 +58,7 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 		}
 
 		if err != nil {
-			log.Fatalln("Failed to Install chart", err)
+			log.Fatalln("Failed to install/update Helm chart", err)
 		} else {
 			fmt.Println("Done")
 		}
@@ -98,7 +98,7 @@ func buildImage(contextPath string, imageName string) string {
 
 		h, err := tar.FileInfoHeader(info, newPath)
 		if err != nil {
-			fmt.Println("Couldnt create tar header ")
+			fmt.Println("Couldn't create tar header ")
 		} else {
 			h.Name = newPath
 			err = tw.WriteHeader(h)
@@ -130,12 +130,12 @@ func buildImage(contextPath string, imageName string) string {
 			Remove:     true})
 
 	if err != nil {
-		log.Fatal(err, " :unable to build docker image")
+		log.Fatal(err, " :Unable to build docker image")
 	}
 	defer imageBuildResponse.Body.Close()
 	_, err = io.Copy(os.Stdout, imageBuildResponse.Body)
 	if err != nil {
-		log.Fatal(err, " :unable to read image build response")
+		log.Fatal(err, " :Unable to read image build response")
 	}
 	return tagName
 }
