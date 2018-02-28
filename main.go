@@ -66,7 +66,7 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 }
 
 // Build docker image inside local kubernetes node
-func buildImage(contextPath string, imageName string) string {
+func buildImage(contextPath string, imageName string, tags []string) string {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		panic(err)
@@ -120,11 +120,12 @@ func buildImage(contextPath string, imageName string) string {
 	ctx := context.Background()
 	timeString := strconv.Itoa(int(time.Now().Unix()))
 	tagName := imageName + ":" + timeString
+	allTags := append(tags, tagName)
 	imageBuildResponse, err := cli.ImageBuild(
 		ctx,
 		dockerFileTarReader,
 		types.ImageBuildOptions{
-			Tags:       []string{tagName},
+			Tags:       allTags,
 			Context:    dockerFileTarReader,
 			Dockerfile: dockerFile,
 			Remove:     true})
@@ -188,6 +189,8 @@ type GokuConfig struct {
 			Name           string `yaml:"name"`
 			// Context path containing Dockerfile
 			Path string `yaml:"path"`
+			// Optional extra tags to apply to the image
+			Tags []string `yaml:"tags"`
 		} `yaml:"images"`
 	} `yaml:"charts"`
 	// The base path relative to goku.yaml where all paths are built from
@@ -221,18 +224,18 @@ func StartWatching(config *GokuConfig) {
 		for _, imageItem := range chart.Images {
 
 			//TODO this is an initial bootstrap on startup... to be removed?
-			imageTag := buildImage(path.Join(config.BaseDir, imageItem.Path), imageItem.Name)
+			imageTag := buildImage(path.Join(config.BaseDir, imageItem.Path), imageItem.Name, imageItem.Tags)
 			valueOverrides[imageItem.ImageValueName] = imageTag
 
 			// Go thread to watch each image's file structure
 			// build and update chart on any file change.
-			go func(contextPath string, name string, imageValueName string) {
+			go func(contextPath string, name string, tags []string, imageValueName string) {
 				startWatcher(path.Join(config.BaseDir, contextPath), func() {
-					imageTag := buildImage(path.Join(config.BaseDir, contextPath), name)
+					imageTag := buildImage(path.Join(config.BaseDir, contextPath), name, tags)
 					valueOverrides[imageValueName] = imageTag
 					Deploy(chart.Name, path.Join(config.BaseDir, chart.Path), valueOverrides)
 				})
-			}(imageItem.Path, imageItem.Name, imageItem.ImageValueName)
+			}(imageItem.Path, imageItem.Name, imageItem.Tags, imageItem.ImageValueName)
 
 			wg.Add(1)
 		}
