@@ -66,7 +66,7 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 }
 
 // Build docker image inside local kubernetes node
-func buildImage(contextPath string, imageName string) string {
+func buildImage(contextPath string, imageName string, dockerFile string, tags []string) string {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		panic(err)
@@ -76,7 +76,6 @@ func buildImage(contextPath string, imageName string) string {
 	tw := tar.NewWriter(buf)
 	defer tw.Close()
 
-	dockerFile := "Dockerfile"
 	rootDirectory := contextPath
 
 	walkDirFn := func(path string, info os.FileInfo, err error) error {
@@ -120,11 +119,12 @@ func buildImage(contextPath string, imageName string) string {
 	ctx := context.Background()
 	timeString := strconv.Itoa(int(time.Now().Unix()))
 	tagName := imageName + ":" + timeString
+	allTags := append(tags, tagName)
 	imageBuildResponse, err := cli.ImageBuild(
 		ctx,
 		dockerFileTarReader,
 		types.ImageBuildOptions{
-			Tags:       []string{tagName},
+			Tags:       allTags,
 			Context:    dockerFileTarReader,
 			Dockerfile: dockerFile,
 			Remove:     true})
@@ -186,8 +186,14 @@ type GokuConfig struct {
 			// The value name which must exist in the helm chart templates
 			ImageValueName string `yaml:"imageValueName"`
 			Name           string `yaml:"name"`
-			// Context path containing Dockerfile
+			// Path for Goku to watch for changes. Used as the default docker ContextPath
 			Path string `yaml:"path"`
+			// Optional extra tags to apply to the image
+			Tags []string `yaml:"tags"`
+			// Optionl set a different Docker build context Path from the watch Path.
+			ContextPath string `yaml:"contextPath"`
+			// Optional custom path to Dockerfile. Must be below the ContextPath
+			Dockerfile string `yaml:"dockerfile"`
 		} `yaml:"images"`
 	} `yaml:"charts"`
 	// The base path relative to goku.yaml where all paths are built from
@@ -219,20 +225,31 @@ func StartWatching(config *GokuConfig) {
 	for _, chart := range config.Charts {
 		valueOverrides := make(map[string]interface{})
 		for _, imageItem := range chart.Images {
+			//if ContextPath is not given: use the watchPath (Path) instead
+			dockerBuildContext := imageItem.Path
+			if imageItem.ContextPath != "" {
+				dockerBuildContext = imageItem.ContextPath
+			}
 
-			//TODO this is an initial bootstrap on startup... to be removed?
-			imageTag := buildImage(path.Join(config.BaseDir, imageItem.Path), imageItem.Name)
+			// if Dockerfile is not give assume its ContextPath/Dockerfile
+			if imageItem.Dockerfile == "" {
+				imageItem.Dockerfile = "Dockerfile"
+			}
+
+			//TODO this is an initial build/bootstrap on startup... to be removed?
+			imageTag := buildImage(path.Join(config.BaseDir, dockerBuildContext), imageItem.Name, imageItem.Dockerfile, imageItem.Tags)
 			valueOverrides[imageItem.ImageValueName] = imageTag
 
 			// Go thread to watch each image's file structure
 			// build and update chart on any file change.
-			go func(contextPath string, name string, imageValueName string) {
-				startWatcher(path.Join(config.BaseDir, contextPath), func() {
-					imageTag := buildImage(path.Join(config.BaseDir, contextPath), name)
+			go func(watchPath string, name string, dockerFile, contextPath string, tags []string, imageValueName string) {
+				startWatcher(path.Join(config.BaseDir, watchPath), func() {
+
+					imageTag := buildImage(path.Join(config.BaseDir, contextPath), name, dockerFile, tags)
 					valueOverrides[imageValueName] = imageTag
 					Deploy(chart.Name, path.Join(config.BaseDir, chart.Path), valueOverrides)
 				})
-			}(imageItem.Path, imageItem.Name, imageItem.ImageValueName)
+			}(imageItem.Path, imageItem.Name, imageItem.Dockerfile, dockerBuildContext, imageItem.Tags, imageItem.ImageValueName)
 
 			wg.Add(1)
 		}
