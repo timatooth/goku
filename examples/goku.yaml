@@ -9,3 +9,28 @@ charts:
   - name: goku/app2
     imageValueName: app2image
     path: app2
+# 
+# - name: anotherchart
+#   path: anotherchart
+
+# Lock down the versions of Go tools we use to unexpected future breakages
+tools:
+  kubectl:
+    darwin: https://storage.googleapis.com/kubernetes-release/release/v1.10.0/bin/darwin/amd64/kubectl
+    linux: https://storage.googleapis.com/kubernetes-release/release/v1.10.0/bin/linux/amd64/kubectl
+    windows: https://storage.googleapis.com/kubernetes-release/release/v1.10.0/bin/windows/amd64/kubectl.exe
+  helm:
+    # UGH need to untar these ones
+    darwin: https://storage.googleapis.com/kubernetes-helm/helm-v2.8.2-darwin-amd64.tar.gz
+    linux: https://storage.googleapis.com/kubernetes-helm/helm-v2.8.2-linux-amd64.tar.gz
+    windows: https://storage.googleapis.com/kubernetes-helm/helm-v2.8.2-windows-amd64.tar.gz
+  minikube:
+    darwin: https://github.com/kubernetes/minikube/releases/download/v0.26.1/minikube-darwin-amd64
+    linux: https://github.com/kubernetes/minikube/releases/download/v0.26.1/minikube-linux-amd64
+    windows: https://github.com/kubernetes/minikube/releases/download/v0.26.1/minikube-windows-amd64
+
+# Custom entries to /etc/hosts for local domain testing via nginx ingress controller
+# TODO requires SUDO on host.
+hosts:
+  - 'app1.goku.test'
+  - 'app2.goku.test'
