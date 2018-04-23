@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"log"
-	"path"
-	//"io"
 	"os"
-	"os/user"
 	"os/exec"
+	"os/user"
+	"path"
+
 	"github.com/spf13/cobra"
 )
 
@@ -14,46 +14,54 @@ import (
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start minikube, install helm charts",
-	Long: `First time start of minikube and installs helm charts`,
+	Long:  `First time start of minikube and installs helm charts`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Println("start called")
 
 		// get home dir
 		usr, err := user.Current()
-    if err != nil {
-        log.Fatal( err )
-    }
+		if err != nil {
+			log.Fatal(err)
+		}
 		gokuBinPath := path.Join(usr.HomeDir, ".goku/bin")
-    log.Println( gokuBinPath)
+		log.Println(gokuBinPath)
 
 		//start minikube
-		command := exec.Command(path.Join(gokuBinPath, "minikube"), "start")
+		command := exec.Command(path.Join(gokuBinPath, "minikube"), "start", "--cpus", "4", "--memory", "8086")
 		command.Stdout = os.Stdout
-    command.Stderr = os.Stderr
+		command.Stderr = os.Stderr
 		err = command.Run()
 		if err != nil {
 			log.Fatalf("Run failed with %s\n", err)
 		}
 
-
 		// enable ingress
 		command = exec.Command(path.Join(gokuBinPath, "minikube"), "addons", "enable", "ingress")
 		command.Stdout = os.Stdout
-    command.Stderr = os.Stderr
+		command.Stderr = os.Stderr
 		err = command.Run()
 		if err != nil {
 			log.Fatalf("Run failed with %s\n", err)
 		}
 
 		//enable heapster
-
 		command = exec.Command(path.Join(gokuBinPath, "minikube"), "addons", "enable", "heapster")
 		command.Stdout = os.Stdout
-    command.Stderr = os.Stderr
+		command.Stderr = os.Stderr
 		err = command.Run()
 		if err != nil {
 			log.Fatalf("Run failed with %s\n", err)
 		}
+
+		//install tiller
+		command = exec.Command(path.Join(gokuBinPath, "helm"), "init")
+		command.Stdout = os.Stdout
+		command.Stderr = os.Stderr
+		err = command.Run()
+		if err != nil {
+			log.Fatalf("Run failed with %s\n", err)
+		}
+
 	},
 }
 

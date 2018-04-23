@@ -1,9 +1,10 @@
 package config
 
 import (
+	"io/ioutil"
 	"log"
 	"path"
-	"io/ioutil"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -30,7 +31,7 @@ type GokuConfig struct {
 			Dockerfile string `yaml:"dockerfile"`
 		} `yaml:"images"`
 	} `yaml:"charts"`
-	Tools map[string] map[string] string `yaml:"tools"`
+	Tools map[string]map[string]string `yaml:"tools"`
 	// The base path relative to goku.yaml where all paths are built from
 	BaseDir string
 }

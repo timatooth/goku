@@ -1,20 +1,10 @@
 package cmd
 
 import (
-	GokuConfig "github.com/timatooth/goku/config"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
-	"github.com/radovskyb/watcher"
-	"gopkg.in/yaml.v2"
-	"k8s.io/helm/pkg/chartutil"
-	"k8s.io/helm/pkg/helm"
-	"github.com/spf13/cobra"
 	"archive/tar"
 	"bytes"
 	"context"
-	"fmt"
 	"io"
-
 	"log"
 	"os"
 	"path"
@@ -22,19 +12,29 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
+	"github.com/fatih/color"
+	"github.com/radovskyb/watcher"
+	"github.com/spf13/cobra"
+	GokuConfig "github.com/timatooth/goku/config"
+	"gopkg.in/yaml.v2"
+	"k8s.io/helm/pkg/chartutil"
+	"k8s.io/helm/pkg/helm"
 )
 
 // Check if goku managed release already been deployed
 func ReleaseExists(hc *helm.Client, name string) bool {
 	response, err := hc.ListReleases(helm.ReleaseListFilter(name))
 	if err != nil {
-		fmt.Println(err)
-		panic("Could not list existing helm releases. Have you port forwarded the Tiller Pod?")
+		log.Fatalf("%s Could not list existing helm releases. Have you port forwarded the Tiller Pod?", err)
+		panic("Can't contact Tiller")
 	}
 	return response.Count == 1
 }
 
-// Create or update Helm release with chart & value overrides
+// Deploy - Create or update Helm release with chart & value overrides
 func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 	vals, err := yaml.Marshal(values)
 	if err != nil {
@@ -43,8 +43,8 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 
 	//TODO find a cool way to autodetect kubectl context, and do this in the background?
 
-	hc := helm.NewClient(helm.Host("127.0.0.1:44134"))
-	fmt.Println("Loading chart...")
+	hc := helm.NewClient(helm.Host("127.0.0.1:44134"), helm.ConnectTimeout(5))
+	log.Printf("Loading chart %s ...\n", chartPath)
 	achart, err := chartutil.Load(chartPath)
 
 	if err != nil {
@@ -52,17 +52,17 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 	} else {
 		releaseName := "goku-" + chartName
 		if !ReleaseExists(hc, releaseName) {
-			fmt.Printf("***Installing*** chart release %s... ", releaseName)
+			log.Printf("***Installing*** chart release %s... ", releaseName)
 			_, err = hc.InstallReleaseFromChart(achart, "default", helm.ReleaseName(releaseName), helm.ValueOverrides(vals))
 		} else {
-			fmt.Printf("**Updating** existing chart release %s... ", releaseName)
+			log.Printf("**Updating** existing chart release %s... ", releaseName)
 			_, err = hc.UpdateReleaseFromChart(releaseName, achart, helm.UpdateValueOverrides(vals))
 		}
 
 		if err != nil {
 			log.Fatalln("Failed to install/update Helm chart", err)
 		} else {
-			fmt.Println("Done")
+			log.Println("Done")
 		}
 	}
 }
@@ -99,18 +99,18 @@ func buildImage(contextPath string, imageName string, dockerFile string, tags []
 
 		h, err := tar.FileInfoHeader(info, newPath)
 		if err != nil {
-			fmt.Println("Couldn't create tar header ")
+			log.Println("Couldn't create tar header ")
 		} else {
 			h.Name = newPath
 			err = tw.WriteHeader(h)
 			if err != nil {
-				fmt.Println("Error writing tar header")
+				log.Println("Error writing tar header")
 			}
 		}
 
 		_, err = io.Copy(tw, aFile)
 		if err != nil {
-			fmt.Println("Error coping file contents to tar")
+			log.Println("Error coping file contents to tar")
 		}
 		return nil
 	}
@@ -135,6 +135,8 @@ func buildImage(contextPath string, imageName string, dockerFile string, tags []
 		log.Fatal(err, " :Unable to build docker image")
 	}
 	defer imageBuildResponse.Body.Close()
+	defer color.Unset()
+	color.Set(color.FgCyan)
 	_, err = io.Copy(os.Stdout, imageBuildResponse.Body)
 	if err != nil {
 		log.Fatal(err, " :Unable to read image build response")
@@ -152,7 +154,7 @@ func startWatcher(contextPath string, watchCallback WatchChangeFn) {
 		for {
 			select {
 			case event := <-w.Event:
-				fmt.Println(event)
+				log.Println(event)
 				watchCallback()
 			case err := <-w.Error:
 				log.Fatalln(err)
@@ -165,18 +167,15 @@ func startWatcher(contextPath string, watchCallback WatchChangeFn) {
 	if err := w.AddRecursive(contextPath); err != nil {
 		log.Fatalln(err)
 	}
-	fmt.Println("Watching files for changes:")
+	log.Println("Watching files for changes:")
 	for path, f := range w.WatchedFiles() {
-		fmt.Printf("%s: %s\n", path, f.Name())
+		log.Printf("%s: %s\n", path, f.Name())
 	}
 	//check source files every 100ms
 	if err := w.Start(time.Millisecond * 100); err != nil {
 		log.Fatalln(err)
 	}
 }
-
-
-
 
 func StartWatching(config *GokuConfig.GokuConfig) {
 	var wg sync.WaitGroup
@@ -230,7 +229,21 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("watch called")
+		var gokuConfig *GokuConfig.GokuConfig
+		if len(args) < 1 {
+			// look for goku.yaml in current dir
+			log.Println("Looking for goku.yaml file in current directory")
+			gokuConfig = GokuConfig.ReadConfig("goku.yaml")
+		} else {
+			log.Printf("Looking for goku.yaml file in %s\n", args[0])
+			gokuConfig = GokuConfig.ReadConfig(args[0])
+		}
+
+		//setup minikube docker-env
+
+		//setup background connection to Tiller pod
+
+		StartWatching(gokuConfig)
 	},
 }
 

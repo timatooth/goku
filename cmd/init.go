@@ -1,15 +1,18 @@
 package cmd
 
 import (
-	"os/user"
-  "log"
-	"os"
-	"net/http"
 	"io"
-	"runtime"
+	"log"
+	"net/http"
+	"os"
+	"os/user"
 	"path"
-	GokuConfig "github.com/timatooth/goku/config"
+	"path/filepath"
+	"runtime"
+
+	"github.com/mholt/archiver"
 	"github.com/spf13/cobra"
+	GokuConfig "github.com/timatooth/goku/config"
 )
 
 // initCmd represents the init command
@@ -40,10 +43,10 @@ var initCmd = &cobra.Command{
 
 		// get home dir
 		usr, err := user.Current()
-    if err != nil {
-        log.Fatal( err )
-    }
-    log.Println( usr.HomeDir )
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println(usr.HomeDir)
 
 		//create $HOME/.goku/bin if it does not exist
 		gokuBinPath := path.Join(usr.HomeDir, ".goku/bin")
@@ -67,9 +70,26 @@ var initCmd = &cobra.Command{
 				panic(err)
 			}
 
+			//edge case, if .tar.gz extract contents
+			if filepath.Ext(url[platform]) == ".gz" {
+				gokuExtractingStagePath := path.Join(usr.HomeDir, ".goku/bin/stage")
+				log.Println("Extracting tar.gz")
+
+				//TarGz
+				log.Printf("Extracting %s to %s\n", location, gokuExtractingStagePath)
+				err = archiver.TarGz.Open(location, gokuExtractingStagePath)
+				if err != nil {
+					log.Fatalf("Error extracting targz file %s \n", err)
+				}
+
+				// a naieve approach, flatten the directory structure of the staged extration to ~/.goku/bin
+				//err := os.Rename(originalPath, newPath)
+				filepath.Walk(gokuExtractingStagePath, visit)
+			}
+
 			// chmod
 			log.Printf("Making %s executable\n", location)
-			err = os.Chmod(location, 0655)
+			err = os.Chmod(location, 0700)
 		}
 
 		// print instructions to user on $PATH setup
@@ -77,8 +97,21 @@ var initCmd = &cobra.Command{
 	},
 }
 
-func DownloadFile(filepath string, url string) error {
+func visit(inputPath string, f os.FileInfo, err error) error {
+	// get home dir
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
 
+	gokuBinPath := path.Join(usr.HomeDir, ".goku/bin")
+	//flatten
+	err = os.Rename(inputPath, path.Join(gokuBinPath, filepath.Base(inputPath)))
+	log.Printf("Visited: %s\n", inputPath)
+	return nil
+}
+
+func DownloadFile(filepath string, url string) error {
 	// Create the file
 	out, err := os.Create(filepath)
 	if err != nil {
