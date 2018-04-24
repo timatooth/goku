@@ -97,11 +97,13 @@ func buildImage(contextPath string, imageName string, dockerFile string, tags []
 		}
 		defer aFile.Close()
 
-		h, err := tar.FileInfoHeader(info, newPath)
+		h, err := tar.FileInfoHeader(info, filepath.ToSlash(newPath))
 		if err != nil {
 			log.Println("Couldn't create tar header ")
 		} else {
-			h.Name = newPath
+			// We need to convert ToSlash if the OS is Windows
+			// make sure the path slashes are around the right way!
+			h.Name = filepath.ToSlash(newPath)
 			err = tw.WriteHeader(h)
 			if err != nil {
 				log.Println("Error writing tar header")
