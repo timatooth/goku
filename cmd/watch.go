@@ -28,7 +28,8 @@ import (
 func ReleaseExists(hc *helm.Client, name string) bool {
 	response, err := hc.ListReleases(helm.ReleaseListFilter(name))
 	if err != nil {
-		log.Fatalf("%s Could not list existing helm releases. Have you port forwarded the Tiller Pod?", err)
+		log.Printf("Could not list existing helm releases from Tiller Error: %s Name: %s", err, name)
+		log.Printf("response %s ", response)
 		panic("Can't contact Tiller")
 	}
 	return response.Count == 1
@@ -43,7 +44,7 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 
 	//TODO find a cool way to autodetect kubectl context, and do this in the background?
 
-	hc := helm.NewClient(helm.Host("127.0.0.1:44134"), helm.ConnectTimeout(5))
+	hc := helm.NewClient(helm.Host("127.0.0.1:44134"), helm.ConnectTimeout(30))
 	log.Printf("Loading chart %s ...\n", chartPath)
 	achart, err := chartutil.Load(chartPath)
 
