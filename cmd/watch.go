@@ -30,9 +30,9 @@ func ReleaseExists(hc *helm.Client, name string) bool {
 	if err != nil {
 		log.Printf("Could not list existing helm releases from Tiller Error: %s Name: %s", err, name)
 		log.Printf("response %s ", response)
-		panic("Can't contact Tiller")
+		panic("Can't contact Tiller. Make sure helm init has been run and helm/tiller versions match.")
 	}
-	return response.Count == 1
+	return response != nil && response.Count == 1
 }
 
 // Deploy - Create or update Helm release with chart & value overrides

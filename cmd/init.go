@@ -107,7 +107,7 @@ func visit(inputPath string, f os.FileInfo, err error) error {
 	gokuBinPath := path.Join(usr.HomeDir, ".goku/bin")
 	//flatten
 	err = os.Rename(inputPath, path.Join(gokuBinPath, filepath.Base(inputPath)))
-	log.Printf("Visited: %s\n", inputPath)
+	err = os.Chmod(path.Join(gokuBinPath, filepath.Base(inputPath)), 0700)
 	return nil
 }
 
