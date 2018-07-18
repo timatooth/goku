@@ -28,17 +28,10 @@ charts:
     path: app2
 ```
 
-# Steps for using
+# Usage
 
-### 1. Port-forward Tiller
-```bash
-# In new terminal:
-# To be automated out, setup a port to communicate with tiller (helm server)
-PODNAME=$(kubectl get pod -n kube-system -l name=tiller -o jsonpath='{.items[0].metadata.name}')
-kubectl -n kube-system port-forward $PODNAME 44134
-```
-
-### 2. Setup Docker ENV
+### 1. Setup Docker ENV
+This makes sure Docker images are built inside the running Minikube VM and not on your local machine.
 ```bash
 eval $(minikube docker-env)
 ```

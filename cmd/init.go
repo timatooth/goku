@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/fatih/color"
 	"github.com/mholt/archiver"
 	"github.com/spf13/cobra"
 	GokuConfig "github.com/timatooth/goku/config"
@@ -18,13 +19,13 @@ import (
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initilise goku config & download all toos",
+	Short: "Download kubernetes binaries locally",
 	Long: `Downloads all necessary Go tools for local Kubernetes development such as:
 	* kubectl
 	* minikube
 	* helm
 
-	Installs them to your $HOME/.goku/bin.
+	Installs them to $HOME/.goku/bin
 
 	Your should add ~/.goku/bin to your $PATH
 	`,
@@ -38,8 +39,6 @@ var initCmd = &cobra.Command{
 			log.Printf("Looking for goku.yaml file in %s\n", args[0])
 			gokuConfig = GokuConfig.ReadConfig(args[0])
 		}
-
-		//log.Println(gokuConfig)
 
 		// get home dir
 		usr, err := user.Current()
@@ -93,7 +92,8 @@ var initCmd = &cobra.Command{
 		}
 
 		// print instructions to user on $PATH setup
-		log.Printf("Now add %s to your OS $PATH environment variable", gokuBinPath)
+		color.Yellow("Now add %s to your OS $PATH environment variable", gokuBinPath)
+
 	},
 }
 

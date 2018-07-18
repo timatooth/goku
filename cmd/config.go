@@ -1,15 +1,17 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
-	GokuConfig "github.com/timatooth/goku/config"
+
 	"github.com/spf13/cobra"
+	GokuConfig "github.com/timatooth/goku/config"
 )
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Checks config",
-	Long: `Parses goku.yaml config file`,
+	Short: "Checks goku.yaml config structure",
+	Long:  `Dumps contests of GokuConfig struct to stdout`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var gokuConfig *GokuConfig.GokuConfig
 		if len(args) < 1 {
@@ -20,7 +22,7 @@ var configCmd = &cobra.Command{
 			log.Printf("Looking for goku.yaml file in %s\n", args[0])
 			gokuConfig = GokuConfig.ReadConfig(args[0])
 		}
-		log.Print(gokuConfig)
+		fmt.Printf("%+v\n", gokuConfig)
 	},
 }
 

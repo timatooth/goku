@@ -13,8 +13,8 @@ import (
 // startCmd represents the start command
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start minikube, install helm charts",
-	Long:  `First time start of minikube and installs helm charts`,
+	Short: "Create a new minikube, enable addons: ingress, helm, heapster",
+	Long:  `Create a new Minikube VM with required tools/addons. This command is only meant to be run once.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Println("start called")
 
