@@ -4,9 +4,13 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/exec"
+	"os/user"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -20,6 +24,9 @@ import (
 	"github.com/spf13/cobra"
 	GokuConfig "github.com/timatooth/goku/config"
 	"gopkg.in/yaml.v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/helm"
 )
@@ -225,12 +232,8 @@ func StartWatching(config *GokuConfig.GokuConfig) {
 var watchCmd = &cobra.Command{
 	Use:   "watch",
 	Short: "Watch goku managed containers for changes and redeploy to Kubernetes via Helm",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Long: `Connects to Helm Tiller and watches your filesystem for changes, 
+	rebuilds docker images and updates helm values to deploy changes in a Minikube cluster.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var gokuConfig *GokuConfig.GokuConfig
 		if len(args) < 1 {
@@ -245,9 +248,67 @@ to quickly create a Cobra application.`,
 		//setup minikube docker-env
 
 		//setup background connection to Tiller pod
+		PortForwardTiller()
 
 		StartWatching(gokuConfig)
 	},
+}
+
+func PortForwardTiller() {
+	var kubeconfig *string
+	defer color.Unset()
+	color.Set(color.FgGreen)
+	if home := homeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	// use the current context in kubeconfig
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	pods, err := clientset.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=helm"})
+	tillerPodName := pods.Items[0].ObjectMeta.Name
+	if err != nil || len(pods.Items) < 1 {
+		log.Println("Could NOT find tiller pod installed in the cluster")
+	}
+	fmt.Println(tillerPodName)
+
+	// get home dir
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+	gokuBinPath := path.Join(usr.HomeDir, ".goku/bin")
+	log.Println(gokuBinPath)
+
+	//run a kubectl port-forward command in the background so we can interact with helm in the cluster.
+	command := exec.Command(path.Join(gokuBinPath, "kubectl"), "-n", "kube-system", "port-forward", tillerPodName, "44134")
+
+	//TODO make this formatted better.
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	err = command.Start()
+
+	if err != nil {
+		log.Fatalf("Port-forward exec failed with %s\n", err)
+	}
+}
+
+func homeDir() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	return os.Getenv("USERPROFILE") // windows
 }
 
 func init() {
