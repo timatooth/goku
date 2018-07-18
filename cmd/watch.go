@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,8 +49,6 @@ func Deploy(chartName string, chartPath string, values map[string]interface{}) {
 	if err != nil {
 		panic("Could not marshal Chart value overrides")
 	}
-
-	//TODO find a cool way to autodetect kubectl context, and do this in the background?
 
 	hc := helm.NewClient(helm.Host("127.0.0.1:44134"), helm.ConnectTimeout(30))
 	log.Printf("Loading chart %s ...\n", chartPath)
@@ -245,16 +244,13 @@ var watchCmd = &cobra.Command{
 			gokuConfig = GokuConfig.ReadConfig(args[0])
 		}
 
-		//setup minikube docker-env
-
-		//setup background connection to Tiller pod
-		PortForwardTiller()
-
+		setupDockerMinikubeEnv()
+		portForwardTiller()
 		StartWatching(gokuConfig)
 	},
 }
 
-func PortForwardTiller() {
+func portForwardTiller() {
 	var kubeconfig *string
 	defer color.Unset()
 	color.Set(color.FgGreen)
@@ -301,6 +297,22 @@ func PortForwardTiller() {
 
 	if err != nil {
 		log.Fatalf("Port-forward exec failed with %s\n", err)
+	}
+}
+
+func setupDockerMinikubeEnv() {
+	out, err := exec.Command("minikube", "docker-env").Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	s := string(out[:])
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		l := strings.Replace(line, "export ", "", 1)
+		if len(l) > 1 && string(l[0]) != string("#") {
+			dockerEnvKeys := strings.Split(l, "=")
+			os.Setenv(dockerEnvKeys[0], strings.Replace(dockerEnvKeys[1], "\"", "", 2))
+		}
 	}
 }
 
