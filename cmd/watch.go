@@ -5,12 +5,10 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
-	"os/user"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -158,6 +156,7 @@ type WatchChangeFn func()
 
 func startWatcher(contextPath string, watchCallback WatchChangeFn) {
 	w := watcher.New()
+	w.IgnoreHiddenFiles(true)
 
 	go func() {
 		for {
@@ -277,18 +276,10 @@ func portForwardTiller() {
 	if err != nil || len(pods.Items) < 1 {
 		log.Println("Could NOT find tiller pod installed in the cluster")
 	}
-	fmt.Println(tillerPodName)
-
-	// get home dir
-	usr, err := user.Current()
-	if err != nil {
-		log.Fatal(err)
-	}
-	gokuBinPath := path.Join(usr.HomeDir, ".goku/bin")
-	log.Println(gokuBinPath)
+	log.Println("Port-forwarding %s", tillerPodName)
 
 	//run a kubectl port-forward command in the background so we can interact with helm in the cluster.
-	command := exec.Command(path.Join(gokuBinPath, "kubectl"), "-n", "kube-system", "port-forward", tillerPodName, "44134")
+	command := exec.Command("kubectl", "-n", "kube-system", "port-forward", tillerPodName, "44134")
 
 	//TODO make this formatted better.
 	command.Stdout = os.Stdout

@@ -1,12 +1,11 @@
 # Goku - Super Saiyan Kubernetes Deployment
-> Watches files to deploy on Kubernetes instantly with CTRL-S using Helm.
+> Watchs app code to deploy new Docker images to Kubernetes
 
 **This tool is still in very early alpha stages**
 
 ### Requirements
-* Kubernetes 1.8+
-* Minikube (or some other local cluster)
-* Tiller installed on Kubernetes cluster (`helm init`)
+* Minikube + kubectl
+* Helm tiller installed on Kubernetes cluster (`helm init`)
 
 ## Example `goku.yaml` config
 All paths to dockerfiles & charts are constructed relative to the `goku.yaml` location.
@@ -28,31 +27,27 @@ charts:
     path: app2
 ```
 
-# Usage
 
-### 1. Setup Docker ENV
-This makes sure Docker images are built inside the running Minikube VM and not on your local machine.
-```bash
-eval $(minikube docker-env)
+## CLI Usage:
 ```
-
-### 3. Usage:
-```
+Usage:
   goku [command]
-
 Available Commands:
-  config      Checks config
-  helm        Setup helm
+  config      Checks goku.yaml config structure
   help        Help about any command
-  init        Initilise goku config & download all toos
-  start       Start minikube, install helm charts
+  init        Download kubernetes binaries locally
+  start       Create a new minikube, enable addons: ingress, helm, heapster
   version     Print the version number of Goku
   watch       Watch goku managed containers for changes and redeploy to Kubernetes via Helm
+Flags:
+  -h, --help     help for goku
+  -t, --toggle   Help message for toggle
+Use "goku [command] --help" for more information about a command.
 ```
 
 #### Bugs & TODO
-- BUG: `imageValueName` Can't contain period `, . - _` characters at the moment.
-- TODO: Automatically setup port-forwaring to the Tiller gRPC service when Goku is started.
-
+- BUG: Helm values `imageValueName` Can't contain period `, . - _` characters at the moment.
+- TODO check that `kubectl config get-context` == 'minikube'`. Not some other production cluster!!!
 ### Disclaimer
 You probably should not use this in production!
+
